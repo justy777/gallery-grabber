@@ -1,24 +1,39 @@
 use bytes::Buf;
-use std::fs::File;
-use std::{fs, io};
+use clap::Parser;
+use std::{env, fs::File, io, path::PathBuf};
+use url::Url;
 
 use rayon::prelude::*;
 
-const SOURCE: &str = "https://i2.hentaifox.com/001/700922";
-const FOLDER: &str =
-    "[Azuma Tesshin] Futari de Dekirumon - You & I can do every lovemaking [English] [Tigoris]";
-const NUMBER_OF_PAGES: i32 = 204;
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Base URL for gallery images
+    #[arg(short, long)]
+    url: Url,
+
+    /// Number of pages to download
+    #[arg(short, long)]
+    pages: i32,
+
+    /// Write downloaded files to <OUTPUT> instead of the current working directory
+    #[arg(short, long)]
+    output: Option<PathBuf>,
+}
 
 fn main() -> Result<(), anyhow::Error> {
-    let mut download_folder = dirs::download_dir().expect("Unable to find download folder");
-    download_folder.push(FOLDER);
-    fs::create_dir(download_folder.clone())?;
+    let args = Args::parse();
+    let source = args.url;
+    let download_dir = match args.output {
+        Some(dir) => dir,
+        None => env::current_dir().expect("Unable to find current working directory"),
+    };
 
     let client = reqwest::blocking::Client::builder().build()?;
 
-    (1..=NUMBER_OF_PAGES).into_par_iter().for_each(|i| {
-        let mut path = download_folder.clone();
-        let url = format!("{SOURCE}/{i}.jpg");
+    (1..=args.pages).into_par_iter().for_each(|i| {
+        let mut path = download_dir.clone();
+        let url = source.join(&format!("{i}.jpg")).unwrap();
         let bytes = client.get(url).send().unwrap().bytes().unwrap();
         let filename = format!("{i:03}.jpg");
         path.push(filename);
