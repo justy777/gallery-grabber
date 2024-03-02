@@ -1,3 +1,4 @@
+use anyhow::Context;
 use bytes::Buf;
 use clap::Parser;
 use std::{env, fs::File, io, path::PathBuf};
@@ -36,15 +37,21 @@ fn main() -> Result<(), anyhow::Error> {
 
     let client = reqwest::blocking::Client::builder().build()?;
 
-    (1..=args.pages).into_par_iter().for_each(|i| {
-        let mut path = download_dir.clone();
-        let url = source.join(&format!("{i}.jpg")).unwrap();
-        let bytes = client.get(url).send().unwrap().bytes().unwrap();
-        let filename = format!("{i:03}.jpg");
-        path.push(filename);
-        let mut out = File::create(path).expect("failed to create file");
-        io::copy(&mut bytes.reader(), &mut out).expect("Failed to copy content");
-    });
+    (1..=args.pages)
+        .into_par_iter()
+        .map(|i| {
+            let mut path = download_dir.clone();
+            let url = source.join(&format!("{i}.jpg")).unwrap();
+            let bytes = client.get(url).send().unwrap().bytes().unwrap();
+            let filename = format!("{i:03}.jpg");
+            path.push(filename);
+            let mut out = File::create(path.clone())
+                .with_context(|| format!("failed to create file {path:?}"))?;
+            io::copy(&mut bytes.reader(), &mut out)
+                .with_context(|| format!("Failed to copy content to file {path:?}"))?;
+            Ok(())
+        })
+        .collect::<Result<Vec<_>, anyhow::Error>>()?;
 
     Ok(())
 }
