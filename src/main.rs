@@ -40,10 +40,12 @@ fn main() -> Result<(), anyhow::Error> {
     (1..=args.pages)
         .into_par_iter()
         .map(|i| {
-            let mut path = download_dir.clone();
-            let url = source.join(&format!("{i}.jpg")).unwrap();
-            let bytes = client.get(url).send().unwrap().bytes().unwrap();
+            let url = source.join(&format!("{i}.jpg"))?;
+            let response = client.get(url.clone()).send()?.error_for_status()?;
+            let bytes = response.bytes()?;
+
             let filename = format!("{i:03}.jpg");
+            let mut path = download_dir.clone();
             path.push(filename);
             let mut out = File::create(path.clone())
                 .with_context(|| format!("failed to create file {path:?}"))?;
