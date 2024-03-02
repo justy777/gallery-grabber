@@ -23,11 +23,16 @@ struct Args {
 
 fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
-    let source = args.url;
-    let download_dir = match args.output {
-        Some(dir) => dir,
-        None => env::current_dir().expect("Unable to find current working directory"),
+    let source = {
+        let mut url = args.url;
+        // Ensure Url has trailing slash (see Url impl join)
+        url.path_segments_mut().unwrap().pop_if_empty().push("");
+        url
     };
+
+    let download_dir = args
+        .output
+        .unwrap_or_else(|| env::current_dir().expect("Unable to find current working directory"));
 
     let client = reqwest::blocking::Client::builder().build()?;
 
