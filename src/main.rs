@@ -41,7 +41,7 @@ fn main() -> Result<(), anyhow::Error> {
         .into_par_iter()
         .map(|i| {
             let url = source.join(&format!("{i}.jpg"))?;
-            let response = client.get(url.clone()).send()?.error_for_status()?;
+            let response = client.get(url).send()?.error_for_status()?;
             let bytes = response.bytes()?;
 
             let filename = format!("{i:03}.jpg");
