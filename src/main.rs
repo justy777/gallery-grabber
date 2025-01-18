@@ -15,16 +15,16 @@ struct Args {
 
     /// Number of pages to download
     #[arg(short, long)]
-    pages: i32,
+    pages: u32,
 
     /// Write downloaded files to <OUTPUT> instead of the current working directory
     #[arg(short, long)]
     output: Option<PathBuf>,
 }
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let source = {
+    let base_url = {
         let mut url = args.url;
         // Ensure Url has trailing slash (see Url impl join)
         url.path_segments_mut().unwrap().pop_if_empty().push("");
@@ -33,27 +33,28 @@ fn main() -> Result<(), anyhow::Error> {
 
     let download_dir = args
         .output
-        .unwrap_or_else(|| env::current_dir().expect("Unable to find current working directory"));
+        .ok_or_else(|| anyhow::anyhow!("No output directory specified"))
+        .or_else(|_| env::current_dir())
+        .context("Unable to find current working directory")?;
 
     let client = reqwest::blocking::Client::builder().build()?;
 
     (1..=args.pages)
         .into_par_iter()
         .map(|i| {
-            let url = source.join(&format!("{i}.jpg"))?;
-            let response = client.get(url).send()?.error_for_status()?;
-            let bytes = response.bytes()?;
+            let url = base_url.join(&format!("{i}.jpg"))?;
+            let bytes = client.get(url).send()?.error_for_status()?.bytes()?;
 
             let filename = format!("{i:03}.jpg");
-            let mut path = download_dir.clone();
-            path.push(filename);
-            let mut out = File::create(path.clone())
-                .with_context(|| format!("failed to create file {path:?}"))?;
-            io::copy(&mut bytes.reader(), &mut out)
-                .with_context(|| format!("Failed to copy content to file {path:?}"))?;
+            let download_path = download_dir.join(&filename);
+            let mut output_file = File::create(download_path.as_path())
+                .with_context(|| format!("failed to create file {}", download_path.display()))?;
+            io::copy(&mut bytes.reader(), &mut output_file).with_context(|| {
+                format!("Failed to copy content to file {}", download_path.display())
+            })?;
             Ok(())
         })
-        .collect::<Result<Vec<_>, anyhow::Error>>()?;
+        .collect::<Result<(), anyhow::Error>>()?;
 
     Ok(())
 }
