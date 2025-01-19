@@ -1,6 +1,7 @@
 use anyhow::Context;
 use bytes::Buf;
 use clap::Parser;
+use reqwest::blocking::Client;
 use std::{env, fs::File, io, path::PathBuf};
 use url::Url;
 
@@ -35,22 +36,24 @@ fn main() -> anyhow::Result<()> {
         .output
         .ok_or_else(|| anyhow::anyhow!("No output directory specified"))
         .or_else(|_| env::current_dir())
-        .context("Unable to find current working directory")?;
+        .context("Failed to find current working directory")?;
 
-    let client = reqwest::blocking::Client::builder().build()?;
+    let client = Client::builder()
+        .build()
+        .context("Failed to build HTTP Client")?;
 
     (1..=args.pages)
         .into_par_iter()
         .map(|i| {
-            let url = base_url.join(&format!("{i}.jpg"))?;
+            let url = base_url.join(&format!("{i}.webp"))?;
             let bytes = client.get(url).send()?.error_for_status()?.bytes()?;
 
-            let filename = format!("{i:03}.jpg");
+            let filename = format!("{i:03}.webp");
             let download_path = download_dir.join(&filename);
             let mut output_file = File::create(download_path.as_path())
                 .with_context(|| format!("failed to create file {}", download_path.display()))?;
             io::copy(&mut bytes.reader(), &mut output_file).with_context(|| {
-                format!("Failed to copy content to file {}", download_path.display())
+                format!("Failed to copy bytes to file {}", download_path.display())
             })?;
             Ok(())
         })
