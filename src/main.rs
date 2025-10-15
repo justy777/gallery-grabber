@@ -1,9 +1,9 @@
 use anyhow::{Context, anyhow};
 use clap::Parser;
+use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use reqwest::{Url, blocking::Client};
 use std::{env, fs, fs::File, io::copy, path::PathBuf};
-
-use rayon::prelude::*;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -49,6 +49,9 @@ fn main() -> anyhow::Result<()> {
         .build()
         .context("Failed to build HTTP Client")?;
 
+    let bar_style = ProgressStyle::with_template("[{elapsed_precise}] {bar} {pos}/{len}")?;
+    let bar = ProgressBar::new(args.pages as u64).with_style(bar_style);
+
     (1..=args.pages)
         .into_par_iter()
         .map(|i| {
@@ -61,9 +64,11 @@ fn main() -> anyhow::Result<()> {
                 .with_context(|| format!("failed to create file {}", path.display()))?;
             copy(&mut response, &mut file)
                 .with_context(|| format!("Failed to copy bytes to file {}", path.display()))?;
+            bar.inc(1);
             Ok(())
         })
         .collect::<Result<(), anyhow::Error>>()?;
 
+    bar.finish();
     Ok(())
 }
