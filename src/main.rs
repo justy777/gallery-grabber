@@ -1,9 +1,7 @@
-use anyhow::Context;
-use bytes::Buf;
+use anyhow::{Context, anyhow};
 use clap::Parser;
-use reqwest::blocking::Client;
-use std::{env, fs::File, io, path::PathBuf};
-use url::Url;
+use reqwest::{Url, blocking::Client};
+use std::{env, fs, fs::File, io::copy, path::PathBuf};
 
 use rayon::prelude::*;
 
@@ -12,7 +10,7 @@ use rayon::prelude::*;
 struct Args {
     /// Base URL for gallery images
     #[arg(short, long)]
-    url: Url,
+    url: String,
 
     /// Number of pages to download
     #[arg(short, long)]
@@ -25,18 +23,20 @@ struct Args {
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let base_url = {
-        let mut url = args.url;
-        // Ensure Url has trailing slash (see Url impl join)
-        url.path_segments_mut().unwrap().pop_if_empty().push("");
-        url
-    };
+
+    let mut base_url = args.url;
+    if !base_url.ends_with('/') {
+        base_url.push('/');
+    }
+    let base_url = Url::parse(&base_url)?;
 
     let download_dir = args
         .output
-        .ok_or_else(|| anyhow::anyhow!("No output directory specified"))
+        .ok_or_else(|| anyhow!("No output directory specified"))
         .or_else(|_| env::current_dir())
         .context("Failed to find current working directory")?;
+
+    fs::create_dir_all(&download_dir)?;
 
     let client = Client::builder()
         .build()
@@ -46,15 +46,14 @@ fn main() -> anyhow::Result<()> {
         .into_par_iter()
         .map(|i| {
             let url = base_url.join(&format!("{i}.webp"))?;
-            let bytes = client.get(url).send()?.error_for_status()?.bytes()?;
+            let mut response = client.get(url).send()?.error_for_status()?;
 
             let filename = format!("{i:03}.webp");
-            let download_path = download_dir.join(&filename);
-            let mut output_file = File::create(download_path.as_path())
-                .with_context(|| format!("failed to create file {}", download_path.display()))?;
-            io::copy(&mut bytes.reader(), &mut output_file).with_context(|| {
-                format!("Failed to copy bytes to file {}", download_path.display())
-            })?;
+            let path = download_dir.join(&filename);
+            let mut file = File::create(&path)
+                .with_context(|| format!("failed to create file {}", path.display()))?;
+            copy(&mut response, &mut file)
+                .with_context(|| format!("Failed to copy bytes to file {}", path.display()))?;
             Ok(())
         })
         .collect::<Result<(), anyhow::Error>>()?;
