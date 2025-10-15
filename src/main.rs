@@ -9,8 +9,8 @@ use rayon::prelude::*;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Base URL for gallery images
-    #[arg(short, long)]
-    url: String,
+    #[arg(short, long, value_parser = parse_url)]
+    url: Url,
 
     /// Number of pages to download
     #[arg(short, long)]
@@ -21,14 +21,21 @@ struct Args {
     output: Option<PathBuf>,
 }
 
+fn parse_url(url: &str) -> Result<Url, String> {
+    let mut url = String::from(url);
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        url = format!("https://{}", url);
+    }
+    if !url.ends_with('/') {
+        url.push('/');
+    }
+    Url::parse(&url).map_err(|e| e.to_string())
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let mut base_url = args.url;
-    if !base_url.ends_with('/') {
-        base_url.push('/');
-    }
-    let base_url = Url::parse(&base_url)?;
+    let base_url = args.url;
 
     let download_dir = args
         .output
